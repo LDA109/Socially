@@ -9,7 +9,8 @@ import { Avatar, AvatarImage } from "./ui/avatar";
 import {formatDistanceToNow} from "date-fns";
 import { DeleteAlertDialog } from "./DeleteAlertDialog";
 import { Button } from "./ui/button";
-import { HeartIcon, MessageCircleIcon } from "lucide-react";
+import { HeartIcon, LogInIcon, MessageCircleIcon, SendIcon } from "lucide-react";
+import { Textarea } from "./ui/textarea";
 
 type Posts = Awaited<ReturnType<typeof getPosts>>
 type Post = Posts[number]
@@ -150,6 +151,77 @@ function PostCard({post, dbUserId}: {post:Post; dbUserId:string | null}) {
               <span>{post.comments.length}</span>
             </Button>
           </div>
+
+          {/* COMMENTS SECTION */}
+          {showComments && (
+            <div className="space-y-4 pt-4 border-t">
+              <div className="space-y-4">
+                {/* DISPLAY COMMENTS */}
+                {post.comments.map((comment) => (
+                  <div key={comment.id} className="flex space-x-3">
+                    <Avatar className="size-8 flex-shrink-0">
+                      <AvatarImage src={comment.author.image ?? "/avatar.png"} />
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-medium text-sm">{comment.author.name}</span>
+                        <span className="text-sm text-muted-foreground">
+                          @{comment.author.username}
+                        </span>
+                        <span className="text-sm text-muted-foreground">·</span>
+                        <span className="text-sm text-muted-foreground">
+                          {formatDistanceToNow(new Date(comment.createdAt))} ago
+                        </span>
+                      </div>
+                      <p className="text-sm break-words">{comment.content}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {user ? (
+                <div className="flex space-x-3">
+                  <Avatar className="size-8 flex-shrink-0">
+                    <AvatarImage src={user?.imageUrl || "/avatar.png"} />
+                  </Avatar>
+                  <div className="flex-1">
+                    <Textarea
+                      placeholder="Write a comment..."
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      className="min-h-[80px] resize-none"
+                    />
+                    <div className="flex justify-end mt-2">
+                      <Button
+                        size="sm"
+                        onClick={handleAddComment}
+                        className="flex items-center gap-2"
+                        disabled={!newComment.trim() || isCommenting}
+                      >
+                        {isCommenting ? (
+                          "Posting..."
+                        ) : (
+                          <>
+                            <SendIcon className="size-4" />
+                            Comment
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-center p-4 border rounded-lg bg-muted/50">
+                  <SignInButton mode="modal">
+                    <Button variant="outline" className="gap-2">
+                      <LogInIcon className="size-4" />
+                      Sign in to comment
+                    </Button>
+                  </SignInButton>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 </CardContent>
 
