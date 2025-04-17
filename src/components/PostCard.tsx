@@ -9,7 +9,7 @@ import { Avatar, AvatarImage } from "./ui/avatar";
 import {formatDistanceToNow} from "date-fns";
 import { DeleteAlertDialog } from "./DeleteAlertDialog";
 import { Button } from "./ui/button";
-import { HeartIcon, LogInIcon, MessageCircleIcon, SendIcon } from "lucide-react";
+import { CornerDownRightIcon, HeartIcon, LogInIcon, MessageCircleIcon, ReplyIcon, SendIcon, XIcon } from "lucide-react";
 import { Textarea } from "./ui/textarea";
 
 type Posts = Awaited<ReturnType<typeof getPosts>>
@@ -18,12 +18,13 @@ type Post = Posts[number]
 function PostCard({post, dbUserId}: {post:Post; dbUserId:string | null}) {
     const { user } = useUser();
     const [newComment, setNewComment] = useState("");
-    const [isCommenting, setIsCommenting] = useState(false); 
+    const [isCommenting, setIsCommenting] = useState(false);
     const [isLiking, setIsLiking] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [hasLiked,setHasLiked] = useState(post.like.some(like => like.userId === dbUserId));
     const [optimisticLikes,setOptimisticLikes] = useState(post._count.like)
     const [showComments, setShowComments] = useState(false);
+    const [replyingTo, setReplyingTo] = useState<{commentId: string, authorName: string} | null>(null);
 
     const handleLike = async () => {
         if(isLiking) return
@@ -33,7 +34,7 @@ function PostCard({post, dbUserId}: {post:Post; dbUserId:string | null}) {
             setHasLiked(prev => !prev)
             setOptimisticLikes(prev => prev + (hasLiked ? - 1 : 1))
             await toggleLike(post.id)
-            
+
         } catch (error) {
             setOptimisticLikes(post._count.like)
             setHasLiked(post.like.some(like => like.userId === dbUserId))
@@ -46,16 +47,44 @@ function PostCard({post, dbUserId}: {post:Post; dbUserId:string | null}) {
         if (!newComment.trim() || isCommenting) return;
         try {
             setIsCommenting(true);
-            const result = await createComment(post.id, newComment);
-            if (result?.success) {
-              toast.success("Comment posted successfully");
-              setNewComment("");
+            let result;
+
+            if (replyingTo) {
+                // This is a reply to a comment
+                result = await createComment(post.id, newComment, replyingTo.commentId);
+                if (result?.success) {
+                    toast.success(`Reply to ${replyingTo.authorName} posted successfully`);
+                    setNewComment("");
+                    setReplyingTo(null); // Clear reply state
+                }
+            } else {
+                // This is a regular comment on the post
+                result = await createComment(post.id, newComment);
+                if (result?.success) {
+                    toast.success("Comment posted successfully");
+                    setNewComment("");
+                }
             }
-          } catch (error) {
+        } catch (error) {
             toast.error("Failed to add comment");
-          } finally {
+        } finally {
             setIsCommenting(false);
-          } 
+        }
+    };
+
+    const handleReply = (commentId: string, authorName: string) => {
+        setReplyingTo({ commentId, authorName });
+        // Focus on the comment input
+        setTimeout(() => {
+            const textarea = document.querySelector('textarea[placeholder="Write a comment..."]') as HTMLTextAreaElement;
+            if (textarea) {
+                textarea.focus();
+            }
+        }, 0);
+    };
+
+    const cancelReply = () => {
+        setReplyingTo(null);
     };
 
     const handleDeletePost = async () => {
@@ -71,7 +100,7 @@ function PostCard({post, dbUserId}: {post:Post; dbUserId:string | null}) {
       setIsDeleting(false);
     }
     };
- 
+
   return <Card className="overflow-hidden">
     <CardContent className="p-4 sm:p-6">
         <div className="spcace-y-4">
@@ -158,23 +187,78 @@ function PostCard({post, dbUserId}: {post:Post; dbUserId:string | null}) {
               <div className="space-y-4">
                 {/* DISPLAY COMMENTS */}
                 {post.comments.map((comment) => (
-                  <div key={comment.id} className="flex space-x-3">
-                    <Avatar className="size-8 flex-shrink-0">
-                      <AvatarImage src={comment.author.image ?? "/avatar.png"} />
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="font-medium text-sm">{comment.author.name}</span>
-                        <span className="text-sm text-muted-foreground">
-                          @{comment.author.username}
-                        </span>
-                        <span className="text-sm text-muted-foreground">·</span>
-                        <span className="text-sm text-muted-foreground">
-                          {formatDistanceToNow(new Date(comment.createdAt))} ago
-                        </span>
+                  <div key={comment.id} className="space-y-3">
+                    {/* Main comment */}
+                    <div className="flex space-x-3">
+                      <Avatar className="size-8 flex-shrink-0">
+                        <AvatarImage src={comment.author.image ?? "/avatar.png"} />
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-medium text-sm">{comment.author.name}</span>
+                          <span className="text-sm text-muted-foreground">
+                            @{comment.author.username}
+                          </span>
+                          <span className="text-sm text-muted-foreground">·</span>
+                          <span className="text-sm text-muted-foreground">
+                            {formatDistanceToNow(new Date(comment.createdAt))} ago
+                          </span>
+                        </div>
+                        <p className="text-sm break-words">{comment.content}</p>
+
+                        {/* Reply button */}
+                        {user && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="mt-1 h-6 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => handleReply(comment.id, comment.author.name || comment.author.username)}
+                          >
+                            <ReplyIcon className="size-3 mr-1" />
+                            Reply
+                          </Button>
+                        )}
                       </div>
-                      <p className="text-sm break-words">{comment.content}</p>
                     </div>
+
+                    {/* Replies to this comment */}
+                    {comment.replies && comment.replies.length > 0 && (
+                      <div className="ml-8 pl-4 border-l space-y-3">
+                        {comment.replies.map(reply => (
+                          <div key={reply.id} className="flex space-x-3">
+                            <Avatar className="size-7 flex-shrink-0">
+                              <AvatarImage src={reply.author.image ?? "/avatar.png"} />
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span className="font-medium text-sm">{reply.author.name}</span>
+                                <span className="text-sm text-muted-foreground">
+                                  @{reply.author.username}
+                                </span>
+                                <span className="text-sm text-muted-foreground">·</span>
+                                <span className="text-sm text-muted-foreground">
+                                  {formatDistanceToNow(new Date(reply.createdAt))} ago
+                                </span>
+                              </div>
+                              <p className="text-sm break-words">{reply.content}</p>
+
+                              {/* Reply to reply button */}
+                              {user && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="mt-1 h-6 text-xs text-muted-foreground hover:text-foreground"
+                                  onClick={() => handleReply(comment.id, reply.author.name || reply.author.username)}
+                                >
+                                  <ReplyIcon className="size-3 mr-1" />
+                                  Reply
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -185,8 +269,26 @@ function PostCard({post, dbUserId}: {post:Post; dbUserId:string | null}) {
                     <AvatarImage src={user?.imageUrl || "/avatar.png"} />
                   </Avatar>
                   <div className="flex-1">
+                    {/* Reply indicator */}
+                    {replyingTo && (
+                      <div className="flex items-center mb-2 p-2 bg-muted rounded-md">
+                        <span className="text-sm flex-1">
+                          <span className="text-muted-foreground">Replying to </span>
+                          <span className="font-medium">{replyingTo.authorName}</span>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 rounded-full"
+                          onClick={cancelReply}
+                        >
+                          <XIcon className="size-3" />
+                        </Button>
+                      </div>
+                    )}
+
                     <Textarea
-                      placeholder="Write a comment..."
+                      placeholder={replyingTo ? `Write a reply to ${replyingTo.authorName}...` : "Write a comment..."}
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
                       className="min-h-[80px] resize-none"
@@ -203,7 +305,7 @@ function PostCard({post, dbUserId}: {post:Post; dbUserId:string | null}) {
                         ) : (
                           <>
                             <SendIcon className="size-4" />
-                            Comment
+                            {replyingTo ? "Reply" : "Comment"}
                           </>
                         )}
                       </Button>
@@ -226,7 +328,7 @@ function PostCard({post, dbUserId}: {post:Post; dbUserId:string | null}) {
 </CardContent>
 
   </Card>;
-  
+
 }
 
 export default PostCard

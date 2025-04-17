@@ -6,7 +6,7 @@ import { Avatar, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatDistanceToNow } from "date-fns";
-import { HeartIcon, MessageCircleIcon, UserPlusIcon } from "lucide-react";
+import { HeartIcon, MessageCircleIcon, ReplyIcon, UserPlusIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
@@ -21,6 +21,8 @@ const getNotificationIcon = (type: string) => {
         return <MessageCircleIcon className="size-4 text-blue-500" />;
       case "FOLLOW":
         return <UserPlusIcon className="size-4 text-green-500" />;
+      case "REPLY":
+        return <ReplyIcon className="size-4 text-purple-500" />;
       default:
         return null;
     }
@@ -53,7 +55,7 @@ function NotificationsPage() {
     }, []);
 
     if(isLoading) return <NotificationsSkeleton />
-    
+
     return (
         <div className="space-y-4">
           <Card>
@@ -91,13 +93,16 @@ function NotificationsPage() {
                               ? "started following you"
                               : notification.type === "LIKE"
                               ? "liked your post"
-                              : "commented on your post"}
+                              : notification.type === "COMMENT"
+                              ? "commented on your post"
+                              : "replied to your comment"}
                           </span>
                         </div>
-    
+
                         {notification.post &&
-                          (notification.type === "LIKE" || notification.type === "COMMENT") && (
+                          (notification.type === "LIKE" || notification.type === "COMMENT" || notification.type === "REPLY") && (
                             <div className="pl-6 space-y-2">
+                              {/* Show post content for all notification types */}
                               <div className="text-sm text-muted-foreground rounded-md p-2 bg-muted/30 mt-2">
                                 <p>{notification.post.content}</p>
                                 {notification.post.image && (
@@ -108,15 +113,34 @@ function NotificationsPage() {
                                   />
                                 )}
                               </div>
-    
+
+                              {/* Show comment content for COMMENT notifications */}
                               {notification.type === "COMMENT" && notification.comment && (
                                 <div className="text-sm p-2 bg-accent/50 rounded-md">
                                   {notification.comment.content}
                                 </div>
                               )}
+
+                              {/* Show reply content for REPLY notifications */}
+                              {notification.type === "REPLY" && notification.comment && (
+                                <div className="space-y-2">
+                                  {/* Show the parent comment */}
+                                  {notification.comment.parent && (
+                                    <div className="text-sm p-2 bg-accent/20 rounded-md border-l-2 border-accent ml-2">
+                                      <p className="text-xs text-muted-foreground">Your comment</p>
+                                      <p>{notification.comment.parent.content}</p>
+                                    </div>
+                                  )}
+
+                                  {/* The reply */}
+                                  <div className="text-sm p-2 bg-accent/50 rounded-md">
+                                    {notification.comment.content}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
-    
+
                         <p className="text-sm text-muted-foreground pl-6">
                           {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
                         </p>

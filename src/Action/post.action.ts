@@ -18,12 +18,12 @@ export async function createPost(content:string, image:string){
                 authorId: userId,
             },
         });
-        
+
         revalidatePath("/"); //purge the cache for the home page
         return { success:true, post };
     } catch (error) {
         console.log("Error in createPost", error);
-        return { success:false, error: "Failed to create post" };    
+        return { success:false, error: "Failed to create post" };
     }
 }
 
@@ -43,6 +43,9 @@ export async function getPosts() {
                     }
                 },
                 comments: {
+                    where: {
+                        parentId: null // Only get top-level comments
+                    },
                     include:{
                         author: {
                             select:{
@@ -50,6 +53,26 @@ export async function getPosts() {
                                 username: true,
                                 image: true,
                                 name: true
+                            }
+                        },
+                        replies: {
+                            include: {
+                                author: {
+                                    select:{
+                                        id: true,
+                                        username: true,
+                                        image: true,
+                                        name: true
+                                    }
+                                }
+                            },
+                            orderBy: {
+                                createdAt: "asc",
+                            }
+                        },
+                        _count: {
+                            select: {
+                                replies: true
                             }
                         }
                     },
@@ -74,8 +97,8 @@ export async function getPosts() {
         return posts
     } catch (error) {
         console.log("Error in getPosts", error);
-        throw new Error("Failed to get posts"); 
-        
+        throw new Error("Failed to get posts");
+
     }
 }
 
@@ -83,7 +106,7 @@ export async function toggleLike(postId: string) {
     try {
       const userId = await getDbUserId();
       if (!userId) return;
-  
+
       // check if like exists
       const existingLike = await prisma.like.findUnique({
         where: {
@@ -93,14 +116,14 @@ export async function toggleLike(postId: string) {
           },
         },
       });
-  
+
       const post = await prisma.post.findUnique({
         where: { id: postId },
         select: { authorId: true },
       });
-  
+
       if (!post) throw new Error("Post not found");
-  
+
       if (existingLike) {
         // unlike
         await prisma.like.delete({
@@ -134,7 +157,7 @@ export async function toggleLike(postId: string) {
             : []),
         ]);
       }
-  
+
       revalidatePath("/");
       return { success: true };
     } catch (error) {
@@ -143,20 +166,32 @@ export async function toggleLike(postId: string) {
     }
   }
 
-  export async function createComment(postId: string, content: string) {
+  export async function createComment(postId: string, content: string, parentCommentId?: string) {
     try {
       const userId = await getDbUserId();
-  
+
       if (!userId) return;
       if (!content) throw new Error("Content is required");
-  
+
       const post = await prisma.post.findUnique({
         where: { id: postId },
         select: { authorId: true },
       });
-  
+
       if (!post) throw new Error("Post not found");
-  
+
+      // If this is a reply, verify the parent comment exists and get its author
+      let parentCommentAuthorId: string | undefined;
+      if (parentCommentId) {
+        const parentComment = await prisma.comment.findUnique({
+          where: { id: parentCommentId },
+          select: { authorId: true, id: true }
+        });
+
+        if (!parentComment) throw new Error("Parent comment not found");
+        parentCommentAuthorId = parentComment.authorId;
+      }
+
       // Create comment and notification in a transaction
       const [comment] = await prisma.$transaction(async (tx) => {
         // Create comment first
@@ -165,11 +200,12 @@ export async function toggleLike(postId: string) {
             content,
             authorId: userId,
             postId,
+            parentId: parentCommentId, // Set parent comment ID if this is a reply
           },
         });
-  
+
         // Create notification if commenting on someone else's post
-        if (post.authorId !== userId) {
+        if (post.authorId !== userId && !parentCommentId) {
           await tx.notification.create({
             data: {
               type: "COMMENT",
@@ -180,10 +216,23 @@ export async function toggleLike(postId: string) {
             },
           });
         }
-  
+
+        // Create notification if replying to someone else's comment
+        if (parentCommentId && parentCommentAuthorId && parentCommentAuthorId !== userId) {
+          await tx.notification.create({
+            data: {
+              type: "REPLY",
+              userId: parentCommentAuthorId,
+              creatorId: userId,
+              postId,
+              commentId: newComment.id,
+            },
+          });
+        }
+
         return [newComment];
       });
-  
+
       revalidatePath(`/`);
       return { success: true, comment };
     } catch (error) {
@@ -195,19 +244,19 @@ export async function toggleLike(postId: string) {
   export async function deletePost(postId: string) {
     try {
       const userId = await getDbUserId();
-  
+
       const post = await prisma.post.findUnique({
         where: { id: postId },
         select: { authorId: true },
       });
-  
+
       if (!post) throw new Error("Post not found");
       if (post.authorId !== userId) throw new Error("Unauthorized - no delete permission");
-  
+
       await prisma.post.delete({
         where: { id: postId },
       });
-  
+
       revalidatePath("/"); // purge the cache
       return { success: true };
     } catch (error) {

@@ -14,7 +14,7 @@ datasource db {
 }
 
 model User {
-  id String @id @default(cuid()) 
+  id String @id @default(cuid())
   email String @unique
   username String @unique
   clerkId String @unique
@@ -44,28 +44,32 @@ model Post{
   content String?
   image String?
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt 
+  updatedAt DateTime @updatedAt
 
   //relations
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade) // cascade delete means delete all posts if author is deleted
-  comments Comment[] 
+  comments Comment[]
   like Like[]
   notifacations Notification[]
 }
 
 model Comment{
   id String @id @default(cuid())
-  content String 
+  content String
   authorId String
   postId String
+  parentId String? // ID of the parent comment if this is a reply
   createdAt DateTime @default(now())
 
   //relations
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade) // cascade delete means delete all comments if author is deleted
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade) // cascade delete means delete all comments if post is deleted
+  parent Comment? @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentReplies")
   notifications Notification[]
 
   @@index([authorId,postId]) // composite index for faster queries
+  @@index([parentId]) // index for faster queries on replies
 }
 
 model Like {
@@ -74,7 +78,7 @@ model Like {
  userId String
  createdAt DateTime @default(now())
 
- //relations 
+ //relations
  user User @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade delete means delete all likes if user is deleted
  post Post @relation(fields: [postId], references: [id], onDelete: Cascade) // cascade delete means delete all comments if post is deleted
 
@@ -97,14 +101,14 @@ model Follows{
 
 model Notification {
   id        String   @id @default(cuid())
-  userId    String                  
-  creatorId String                  
-  type      NotificationType        
+  userId    String
+  creatorId String
+  type      NotificationType
   read      Boolean  @default(false)
-  postId    String?                 
-  commentId String?                
+  postId    String?
+  commentId String?
   createdAt DateTime @default(now())
-  
+
   // Relations
   user      User     @relation("userNotifications", fields: [userId], references: [id], onDelete: Cascade)
   creator   User     @relation("notificationCreator", fields: [creatorId], references: [id], onDelete: Cascade)
@@ -115,7 +119,8 @@ model Notification {
 }
 
 enum NotificationType {
-  LIKE     
-  COMMENT 
-  FOLLOW   
+  LIKE
+  COMMENT
+  FOLLOW
+  REPLY    // When someone replies to your comment
 }

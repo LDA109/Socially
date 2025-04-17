@@ -33,6 +33,14 @@ export async function getNotifications() {
             id: true,
             content: true,
             createdAt: true,
+            parentId: true,
+            parent: {
+              select: {
+                id: true,
+                content: true,
+                authorId: true,
+              },
+            },
           },
         },
       },
